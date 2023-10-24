@@ -40,6 +40,7 @@ class ExecKeywordScan < TaskAsync
 	def _getModifiedFiles(srcPath, dstPath, dstGitOpt, enableNewFile=true)
 		actualModifiedFiles = []
 		dstModifiedFiles = []
+		isDiffChecked = false
 
 		if File.directory?(dstPath) then
 			#Avoid git in git situation then do following instead of diff -r -x .git in the git
@@ -59,8 +60,9 @@ class ExecKeywordScan < TaskAsync
 					exec_cmd = exec_cmd + " #{Shellwords.shellescape(targetSrcFile)} #{Shellwords.shellescape(targetDstFile)}"
 					exec_cmd = exec_cmd + " 2>/dev/null"
 					exec_cmd = exec_cmd + " | grep -Ev \'^(\\+\\+\\+|\\-\\-\\-)\' | grep \'^\\+\' | wc -l"
-					puts "#{exec_cmd}" if @options[:verbose]
 					result = ExecUtil.getExecResultEachLine(exec_cmd, dstPath, false)
+					puts "#{exec_cmd}=#{result}" if @options[:verbose]
+					isDiffChecked = true
 					if result[0].to_i!=0 then
 						# found diffed file!
 						actualModifiedFiles << aTargeFile
@@ -69,7 +71,7 @@ class ExecKeywordScan < TaskAsync
 			end
 		end
 
-		return !actualModifiedFiles.empty? ? actualModifiedFiles : dstModifiedFiles
+		return isDiffChecked ? actualModifiedFiles : dstModifiedFiles
 	end
 
 	def _execKeywordSearch(dstPath, targetFiles, keyword)
@@ -87,7 +89,7 @@ class ExecKeywordScan < TaskAsync
 					_candidates << aFile
 				end
 				if !_actualModifiedFiles.empty? then
-					exec_cmd = "grep -Eic \'#{@keyword}\' #{_actualModifiedFiles}"
+					exec_cmd = "grep -Ec \'#{@keyword}\' #{_actualModifiedFiles}"
 					if _candidates.length == 1 then
 						exec_cmd += " | grep #{@isMissing ? "" : "-v "}\'0\'"
 					else
@@ -102,7 +104,7 @@ class ExecKeywordScan < TaskAsync
 						missed << aResult
 					end
 				end
-				found << ( _candidates - missed )
+				found.concat( _candidates - missed )
 				_candidates = []
 				_actualModifiedFiles=""
 				cnt = 0
@@ -133,7 +135,7 @@ class ExecKeywordScan < TaskAsync
 
 		result = ""
 		missed.each do |aFile|
-			result = result + (!result.empty? ? ":" : "") + aFile
+			result = result + (!result.empty? ? ":" : "") + aFile.to_s
 		end
 		@resultCollector.onResult( @relativePath, result ) if !result.empty?
 
