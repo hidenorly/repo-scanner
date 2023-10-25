@@ -134,7 +134,8 @@ class ExecKeywordScan < TaskAsync
 		puts "#{dstPath}:missed=#{missed}" if @options[:verbose]
 
 		result = ""
-		missed.each do |aFile|
+		targets = missed #@isMissing ? missed : found
+		targets.each do |aFile|
 			result = result + (!result.empty? ? ":" : "") + aFile.to_s
 		end
 		@resultCollector.onResult( @relativePath, result ) if !result.empty?
@@ -162,6 +163,8 @@ options = {
 	:reportOutPath => nil,
 	:numOfThreads => TaskManagerAsync.getNumberOfProcessor()
 }
+
+reporter = CsvReporter
 
 
 opt_parser = OptionParser.new do |opts|
@@ -202,10 +205,14 @@ opt_parser = OptionParser.new do |opts|
 		options[:prefix] = prefix
 	end
 
-	opts.on("-o", "--output=", "Specify report file path )") do |reportOutPath|
+	opts.on("-o", "--output=", "Specify report file path") do |reportOutPath|
 		options[:reportOutPath] = reportOutPath
 	end
 
+	opts.on("-f", "--reportFormat=", "Specify markdown or csv") do |reportFormat|
+		reportFormat.downcase!
+		reporter = MarkdownReporter if reportFormat=="markdown"
+	end
 
 	opts.on("", "--manifestFile=", "Specify manifest file (default:#{options[:manifestFile]})") do |manifestFile|
 		options[:manifestFile] = manifestFile
@@ -262,13 +269,24 @@ end
 taskMan.executeAll()
 taskMan.finalize()
 
-result = resultCollector.getResult()
-result = result.sort
+results = resultCollector.getResult()
+results = results.sort
 
-reporter = CsvReporter.new( options[:reportOutPath] )
+reporter = reporter.new( options[:reportOutPath] )
 
-result.each do | path, result |
-	reporter.println( "#{options[:prefix]}#{path},#{result}" )
+if reporter.class == MarkdownReporter then
+	reporter.println( "| path | filename |" )
+	reporter.println( "| :--- | :--- |" )
+	results.each do | path, result |
+		_result = result.split(":")
+		result = {}
+		result[path] = _result
+		reporter.report( result )
+	end
+else
+	results.each do | path, result |
+		reporter.println( "#{options[:prefix]}#{path},#{result}" )
+	end
 end
 
 reporter.close()
