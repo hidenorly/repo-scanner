@@ -209,9 +209,10 @@ opt_parser = OptionParser.new do |opts|
 		options[:reportOutPath] = reportOutPath
 	end
 
-	opts.on("-f", "--reportFormat=", "Specify markdown or csv") do |reportFormat|
+	opts.on("-f", "--reportFormat=", "Specify markdown or csv or xml") do |reportFormat|
 		reportFormat.downcase!
 		reporter = MarkdownReporter if reportFormat=="markdown"
+		reporter = XmlReporter if reportFormat=="xml"
 	end
 
 	opts.on("", "--manifestFile=", "Specify manifest file (default:#{options[:manifestFile]})") do |manifestFile|
@@ -274,7 +275,14 @@ results = results.sort
 
 reporter = reporter.new( options[:reportOutPath] )
 
-if reporter.class == MarkdownReporter then
+if reporter.class == XmlReporter then
+	theResult = {}
+	results.each do | path, result |
+		_result = result.split(":")
+		theResult[path] = {:path=>path, :filename=>_result}
+	end
+	reporter.report( theResult )
+elsif reporter.class == MarkdownReporter then
 	reporter.println( "| path | filename |" )
 	reporter.println( "| :--- | :--- |" )
 	results.each do | path, result |
