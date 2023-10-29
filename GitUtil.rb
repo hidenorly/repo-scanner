@@ -381,11 +381,16 @@ class GitUtil
 	end
 
 	def self.parsePatchFromBody(theBody)
-		commit = {id:nil, title:nil, date:nil, author:nil, changedId:nil, modifiedFiles:nil, modifiedFilenames:[]}
+		commit = {id:nil, title:nil, date:nil, author:nil, changedId:nil, modifiedFiles:nil, modifiedFilenames:[], message:[]}
 
+		isHeaderFound=false
 		theBody.each.each do |aLine|
 			aLine = StrUtil.ensureUtf8(aLine).strip #aLine.strip!
+			isTitleFound = !commit[:title].to_s.empty?
 			break if _parseMbox(commit, aLine)
+			isHeaderFound |= (!isTitleFound && !commit[:title].to_s.empty?)
+			isHeaderFound = false if aLine.start_with?("---")
+			commit[:message] << aLine if isHeaderFound && aLine
 		end
 
 		return commit
@@ -393,18 +398,8 @@ class GitUtil
 
 
 	def self.parsePatch(patchPath)
-		commit = {id:nil, title:nil, date:nil, author:nil, changedId:nil, modifiedFiles:nil}
-
-		if File.exist?(patchPath) then
-			File.open(patchPath) do |file|
-				file.each_line do |aLine|
-					aLine = StrUtil.ensureUtf8(aLine).strip
-					break if _parseMbox(commit, aLine)
-				end
-			end
-		end
-
-		return commit
+		theBody = FileUtil.readFileAsArray(patchPath)
+		return parsePatchFromBody(theBody)
 	end
 
 
@@ -599,7 +594,33 @@ class GitUtil
 		return nil
 	end
 
-	def self.getCommitIdFromPatch(gitPath, patchBody, onBranch=true, skipGitContain=false, robustMode=false)
+	def self._tryMatchKeyword(gitPath, message, matchKeyword=nil, verbose=false)
+		if matchKeyword then
+			matchRegKey = Regexp.new(matchKeyword)
+			gitOptions = "--no-merges"
+			keys = message.to_s.scan(matchRegKey)
+			if keys then
+				keys.each do |aKeys|
+					if aKeys then
+						aKeys = [aKeys] if aKeys.kind_of?(String)
+						aKeys.each do |key|
+							candidates = commitIdListOflogGrep(gitPath, key, gitOptions)
+							candidates.each do |aCandidateId|
+								isFoundOnTheBranch = containCommitOnBranch?(gitPath, aCandidateId)
+								puts "grep found but not on the branch:#{key}:#{gitPath}:#{aCandidateId}:#{message.slice(0,50)}" if verbose && !isFoundOnTheBranch
+								return aCandidateId if isFoundOnTheBranch
+							end
+						end
+						puts "#{aKeys} is not found on #{gitPath}" if verbose
+					end
+				end
+			end
+		end
+
+		return nil
+	end
+
+	def self.getCommitIdFromPatch(gitPath, patchBody, onBranch=true, skipGitContain=false, robustMode=false, matchKeyword=nil, verbose=false)
 		result = nil
 
 		thePatch = parsePatchFromBody(patchBody)
@@ -609,8 +630,9 @@ class GitUtil
 				(!onBranch && containCommitInGit?(gitPath, thePatch[:id])) ) then
 			result = thePatch[:id]
 		else
-			result = _tryMatch(gitPath, thePatch[:changedId], patchBody) if thePatch[:changedId]
+			result = _tryMatch(gitPath, thePatch[:changedId], patchBody, nil, robustMode) if thePatch[:changedId]
 			result = _tryMatch(gitPath, thePatch[:title], patchBody, nil, robustMode) if !result && thePatch[:title]
+			result = _tryMatchKeyword(gitPath, thePatch[:message].join(" "), matchKeyword, verbose) if !result & robustMode & matchKeyword
 			result = _tryMatch(gitPath, nil, patchBody, "--since=\"#{thePatch[:date]}\" -- #{Shellwords.escape(_getMostModifiedFile(patchBody, thePatch[:modifiedFiles]))}", robustMode) if !result && thePatch[:date] && thePatch[:modifiedFiles] && robustMode
 			# TODO: Try another method...
 		end
@@ -731,6 +753,22 @@ class GitUtil
 	def self.archive(gitPath, outputPath, gitOptions=nil, sha1="HEAD")
 		exec_cmd = "git archive -o #{Shellwords.shellescape(outputPath)}"
 		exec_cmd += " #{sha1}" if sha1
+		exec_cmd += " #{gitOptions}" if gitOptions
+		exec_cmd += " 2>&1"
+
+		ExecUtil.execCmd(exec_cmd, gitPath)
+	end
+
+	def self.remoteAdd(dstGitPath, repoName, srcGitPath, gitOptions=nil)
+		exec_cmd = "git remote add #{Shellwords.shellescape(repoName)} #{Shellwords.shellescape(srcGitPath)}"
+		exec_cmd += " #{gitOptions}" if gitOptions
+		exec_cmd += " 2>&1"
+
+		ExecUtil.execCmd(exec_cmd, dstGitPath)
+	end
+
+	def self.remoteRemove(gitPath, repoName, gitOptions=nil)
+		exec_cmd = "git remote rm #{Shellwords.shellescape(repoName)}"
 		exec_cmd += " #{gitOptions}" if gitOptions
 		exec_cmd += " 2>&1"
 
