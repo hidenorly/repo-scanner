@@ -33,6 +33,7 @@ class ExecKeywordScan < TaskAsync
 		@keyword = options[:keyword]
 		@options = options
 		@isMissing = options[:detect] == "missing"
+		@isActualModifiedCommitCheck = options[:actualModifiedCommitCheck]
 	end
 
 	DEF_EXEC_FILE_COUNTS = 30
@@ -46,7 +47,7 @@ class ExecKeywordScan < TaskAsync
 			#Avoid git in git situation then do following instead of diff -r -x .git in the git
 			_dstModifiedFiles = GitUtil.getFilesWithGitOpts(dstPath, dstGitOpt)
 			_dstModifiedFiles.each do |aTargetFile|
-				dstModifiedFiles << aTargetFile if !FileClassifier.isBinaryFile( aTargetFile )
+				dstModifiedFiles << aTargetFile if !FileClassifier.isBinaryFile( aTargetFile ) && (!@isActualModifiedCommitCheck || GitUtil.isCommitExistWithFileAndGitOpts(dstPath, aTargetFile, dstGitOpt))
 			end
 
 			puts "#{dstPath}:dstModifiedFiles=#{dstModifiedFiles}" if @options[:verbose]
@@ -161,11 +162,11 @@ options = {
 	:keyword => "Copyright",
 	:detect => "missing",
 	:reportOutPath => nil,
+	:actualModifiedCommitCheck => false,
 	:numOfThreads => TaskManagerAsync.getNumberOfProcessor()
 }
 
 reporter = CsvReporter
-
 
 opt_parser = OptionParser.new do |opts|
 	opts.banner = "Usage: -s sourceRepoDir -t targetRepoDir"
@@ -199,6 +200,10 @@ opt_parser = OptionParser.new do |opts|
 
 	opts.on("-g", "--gitPath=", "Specify target git path (regexp) if you want to limit to execute the git only") do |gitPath|
 		options[:gitPath] = gitPath
+	end
+
+	opts.on("-a", "--actualModifiedCommitCheck", "Specify if you want to apply only commit exists") do
+		options[:actualModifiedCommitCheck] = true
 	end
 
 	opts.on("-p", "--prefix=", "Specify prefix if necessary to add for the path") do |prefix|
