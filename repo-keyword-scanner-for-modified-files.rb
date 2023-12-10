@@ -166,7 +166,7 @@ options = {
 	:numOfThreads => TaskManagerAsync.getNumberOfProcessor()
 }
 
-reporter = CsvReporter
+reporter = MarkdownReporter
 
 opt_parser = OptionParser.new do |opts|
 	opts.banner = "Usage: -s sourceRepoDir -t targetRepoDir"
@@ -218,6 +218,7 @@ opt_parser = OptionParser.new do |opts|
 		reportFormat.downcase!
 		reporter = MarkdownReporter if reportFormat=="markdown"
 		reporter = XmlReporter if reportFormat=="xml"
+		reporter = CsvReporter if reportFormat=="csv"
 	end
 
 	opts.on("", "--manifestFile=", "Specify manifest file (default:#{options[:manifestFile]})") do |manifestFile|

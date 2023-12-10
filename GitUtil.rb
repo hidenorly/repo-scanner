@@ -256,9 +256,8 @@ class GitUtil
 	end
 
 	def self.isCommitExistWithFileAndGitOpts(gitPath, filename, gitOpt = "")
-		exec_cmd = "git log --pretty=\"%h\" #{gitOpt ? gitOpt : ""}  -- #{Shellwords.shellescape(filename)}"
-		result = ExecUtil.getExecResultEachLine(exec_cmd, gitPath, false, true, true)
-		return !result.empty?
+		exec_cmd = "git log --pretty=\"%h\" #{gitOpt ? gitOpt : ""}  -- #{filename}"
+		return ExecUtil.hasResult?(exec_cmd, gitPath, false)
 	end
 
 	def self._getValue(aLine, key)
